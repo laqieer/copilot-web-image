@@ -1,10 +1,11 @@
 import tempfile
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 
 from PIL import Image
 
-from generate_image import locked_profile, parse_arguments, save_download
+from generate_image import PlaywrightError, locked_profile, parse_arguments, run_generation, save_download
 
 
 class Download:
@@ -85,6 +86,23 @@ class GeneratorTests(unittest.TestCase):
         ):
             with self.subTest(extra=extra), self.assertRaises(SystemExit):
                 parse_arguments(["--prompt", "test", "--output", str(self.output), *extra])
+
+    def test_page_creation_failure_closes_browser_and_releases_profile(self):
+        profile = self.root / "profile"
+        args = parse_arguments([
+            "--prompt", "test",
+            "--output", str(self.output),
+            "--profile-dir", str(profile),
+            "--diagnostics-dir", str(self.root / "diagnostics"),
+        ])
+        with patch("generate_image.sys.platform", "win32"), patch("generate_image.sync_playwright") as start:
+            context = start.return_value.__enter__.return_value.chromium.launch_persistent_context.return_value
+            context.pages = []
+            context.new_page.side_effect = PlaywrightError("Could not create a page")
+            with self.assertRaisesRegex(PlaywrightError, "Could not create a page"):
+                run_generation(args)
+        context.close.assert_called_once()
+        self.assertFalse((profile / ".copilot-web-image.lock").exists())
 
 
 if __name__ == "__main__":
