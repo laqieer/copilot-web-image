@@ -69,7 +69,7 @@ def generate_image(
     for name, value in (
         ("output", output), ("profile_dir", profile_dir), ("diagnostics_dir", diagnostics_dir),
     ):
-        if value is not None and not Path(value).expanduser().is_absolute():
+        if value is not None and not Path(value).is_absolute():
             raise ToolError(f"{name} must be an absolute path on the Windows host")
     argv = ["--prompt=" + prompt, "--output=" + output]
     for name, value in (
