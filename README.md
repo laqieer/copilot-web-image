@@ -50,6 +50,22 @@ Run `.\generate-image.cmd --help` for generation and sign-in timeouts and
 diagnostic options. A website change or policy denial produces a nonzero exit
 status rather than a success-shaped placeholder image.
 
+## Agent Skill
+
+The project includes an Agent Skill at
+`.github/skills/copilot-web-image/SKILL.md`. Compatible agents discover it when
+working in this checkout. In an existing Copilot CLI session, run `/skills reload`
+and `/skills info copilot-web-image` to check discovery, then request, for example:
+
+```text
+Use /copilot-web-image to generate a watercolor mountain lake in my Downloads folder.
+```
+
+The skill invokes the same CLI and requires the same Windows environment,
+account access, and interactive sign-in. Keep it with the source checkout;
+copying only `SKILL.md` to another project does not install the generator.
+It does not grant blanket shell permissions or bypass organizational policies.
+
 ## Browser profiles and privacy
 
 By default, the tool uses its own persistent Edge profile under
