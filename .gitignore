@@ -1,0 +1,25 @@
+# Local browser state, credentials and diagnostics must stay out of Git.
+browser-profile/
+browser_profile/
+diagnostics/
+earlier-runs/
+outputs/
+wheelhouse/
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.log
+.env
+.env.*
+token_cache.json
+storage-state*.json
+
+# Installed dependencies and machine-specific Python caches.
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
