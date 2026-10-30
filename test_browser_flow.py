@@ -12,7 +12,8 @@ from generate_image import generate, parse_arguments
 
 
 class BrowserFlowTests(unittest.TestCase):
-    def test_waits_for_artifact_and_downloads_original(self):
+    @staticmethod
+    def image_fixture():
         image = BytesIO()
         Image.new("RGB", (37, 29), "green").save(image, format="PNG")
         original = image.getvalue()
@@ -60,6 +61,10 @@ class BrowserFlowTests(unittest.TestCase):
               };
             </script>
         """.replace("DATA_URL", data_url)
+        return html, original
+
+    def test_waits_for_artifact_and_downloads_original(self):
+        html, original = self.image_fixture()
         with tempfile.TemporaryDirectory() as temp, sync_playwright() as playwright:
             output = Path(temp) / "download.png"
             args = parse_arguments(["--prompt", "test illustration", "--output", str(output)])

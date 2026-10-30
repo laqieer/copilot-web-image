@@ -55,8 +55,8 @@ def positive_index(value):
     return index
 
 
-def parse_arguments(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
+def parse_arguments(argv=None, *, parser_class=argparse.ArgumentParser):
+    parser = parser_class(description=__doc__)
     parser.add_argument("--prompt", required=True, help="Image description sent to Copilot")
     parser.add_argument("--output", required=True, type=Path, help="New .png file; never overwritten")
     parser.add_argument("--profile-dir", type=Path, default=data_directory() / "browser-profile")
@@ -136,7 +136,7 @@ def locked_profile(profile):
         lock.unlink()
 
 
-def sign_in(page, args):
+def sign_in(page, args, *, progress=None):
     deadline = time.monotonic() + args.signin_timeout
     selection_done = False
     announced = False
@@ -157,22 +157,22 @@ def sign_in(page, args):
                 accounts.click()
                 selection_done = True
         if not announced:
-            print("Complete any account selection, sign-in or MFA in Edge.", flush=True)
+            print("Complete any account selection, sign-in or MFA in Edge.", file=progress, flush=True)
             announced = True
         page.wait_for_timeout(500)
     raise RuntimeError("Sign-in did not finish before --signin-timeout")
 
 
-def generate(page, args):
+def generate(page, args, *, progress=None):
     page.goto(SITE, wait_until="domcontentloaded", timeout=60000)
-    sign_in(page, args)
-    print("Signed in. Selecting image-generation mode.", flush=True)
+    sign_in(page, args, progress=progress)
+    print("Signed in. Selecting image-generation mode.", file=progress, flush=True)
     # Wait for the mode switch, not just the transient editor during app startup.
     cowork = page.get_by_role("radio", name="Cowork", exact=True)
     cowork.wait_for(state="visible", timeout=60000)
     cowork.check()
     editor = page.get_by_role("textbox", name=re.compile(r"^Message (Copilot|Cowork)$"))
-    print("Writing prompt.", flush=True)
+    print("Writing prompt.", file=progress, flush=True)
     send = page.get_by_role("button", name="Send", exact=True)
     deadline = time.monotonic() + 60
     while time.monotonic() < deadline:
@@ -184,7 +184,7 @@ def generate(page, args):
             break
     else:
         raise RuntimeError("The website never enabled its Send button")
-    print("Prompt submitted. Waiting for the generated image.", flush=True)
+    print("Prompt submitted. Waiting for the generated image.", file=progress, flush=True)
     artifact = page.get_by_role("button", name=re.compile(r"^Open .+, Image$"))
     artifact.wait_for(state="visible", timeout=args.timeout * 1000)
     artifact.click()
@@ -198,42 +198,48 @@ def generate(page, args):
     return save_download(event.value, args.output)
 
 
+def run_generation(args, *, progress=None):
+    if sys.platform != "win32":
+        raise RuntimeError("Run this script with native Windows Python and Microsoft Edge.")
+    page = None
+    with locked_profile(args.profile_dir), sync_playwright() as playwright:
+        browser_args = []
+        if args.profile_name:
+            browser_args.append("--profile-directory=" + args.profile_name)
+        context = playwright.chromium.launch_persistent_context(
+            str(args.profile_dir),
+            channel="msedge",
+            chromium_sandbox=True,
+            headless=False,
+            accept_downloads=True,
+            viewport={"width": 1280, "height": 850},
+            args=browser_args,
+        )
+        try:
+            page = context.pages[0] if context.pages else context.new_page()
+            return generate(page, args, progress=progress)
+        except (PlaywrightError, OSError, ValueError, RuntimeError, UnidentifiedImageError):
+            args.diagnostics_dir.mkdir(parents=True, exist_ok=True)
+            screenshot = args.diagnostics_dir / ("failure-" + time.strftime("%Y%m%d-%H%M%S") + ".png")
+            if page is not None and not page.is_closed():
+                try:
+                    page.screenshot(path=str(screenshot), timeout=5000)
+                except PlaywrightError:
+                    print("Could not capture a diagnostic screenshot.", file=sys.stderr)
+                else:
+                    print("Failure screenshot (may contain account/UI details): " + str(screenshot), file=sys.stderr)
+            raise
+        finally:
+            context.close()
+
+
 def main(argv=None):
     args = parse_arguments(argv)
     if sys.platform != "win32":
         print("Run this script with native Windows Python and Microsoft Edge.", file=sys.stderr)
         return 2
-    page = None
     try:
-        with locked_profile(args.profile_dir), sync_playwright() as playwright:
-            browser_args = []
-            if args.profile_name:
-                browser_args.append("--profile-directory=" + args.profile_name)
-            context = playwright.chromium.launch_persistent_context(
-                str(args.profile_dir),
-                channel="msedge",
-                chromium_sandbox=True,
-                headless=False,
-                accept_downloads=True,
-                viewport={"width": 1280, "height": 850},
-                args=browser_args,
-            )
-            try:
-                page = context.pages[0] if context.pages else context.new_page()
-                width, height = generate(page, args)
-            except (PlaywrightError, OSError, ValueError, RuntimeError, UnidentifiedImageError):
-                args.diagnostics_dir.mkdir(parents=True, exist_ok=True)
-                screenshot = args.diagnostics_dir / ("failure-" + time.strftime("%Y%m%d-%H%M%S") + ".png")
-                if not page.is_closed():
-                    try:
-                        page.screenshot(path=str(screenshot), timeout=5000)
-                    except PlaywrightError:
-                        print("Could not capture a diagnostic screenshot.", file=sys.stderr)
-                    else:
-                        print("Failure screenshot (may contain account/UI details): " + str(screenshot), file=sys.stderr)
-                raise
-            finally:
-                context.close()
+        width, height = run_generation(args)
     except PlaywrightTimeout as error:
         print("Timed out waiting for a website control, generation or download. See diagnostics.", file=sys.stderr)
         print(str(error).splitlines()[0], file=sys.stderr)
