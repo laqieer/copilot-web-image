@@ -72,6 +72,7 @@ class MCPTests(unittest.IsolatedAsyncioTestCase):
             ({"profile_name": "../profile"}, "--profile-name must be a directory name"),
             ({"profile_dir": "relative-profile"}, "profile_dir must be an absolute path"),
             ({"diagnostics_dir": "relative-diagnostics"}, "diagnostics_dir must be an absolute path"),
+            ({"diagnostics_dir": "~/private-diagnostics"}, "diagnostics_dir must be an absolute path"),
             ({"timeout": 1801}, "1800"),
         )
         with patch("mcp_server.generator.run_generation") as run:
